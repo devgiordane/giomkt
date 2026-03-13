@@ -275,6 +275,7 @@ class ProductGoal(Base):
     year = Column(Integer, nullable=False)
     sales_target = Column(Integer, default=0)
     revenue_target = Column(Float, default=0.0)
+    commission_target = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     product = relationship("Product", back_populates="goals")
@@ -316,6 +317,7 @@ def _migrate_tasks_columns():
     migrations += [
         "ALTER TABLE eduzz_accounts ADD COLUMN access_token TEXT",
         "ALTER TABLE eduzz_accounts ADD COLUMN eduzz_user_id VARCHAR(100)",
+        "ALTER TABLE product_goals ADD COLUMN commission_target FLOAT DEFAULT 0.0",
     ]
 
     with engine.connect() as conn:
@@ -329,7 +331,7 @@ def _migrate_tasks_columns():
 
 
 @contextmanager
-def get_session() -> Session:
+def get_session():
     """Provide a transactional scope around a series of operations."""
     session = SessionLocal()
     try:
