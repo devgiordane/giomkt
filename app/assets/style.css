@@ -85,3 +85,22 @@
     border-left: 2px solid rgba(255, 255, 255, 0.12) !important;
     margin-left: 8px;
 }
+
+/* Timeline task block hover */
+.timeline-block:hover {
+    opacity: 1 !important;
+    filter: brightness(1.15);
+}
+
+/* Today page – show actions on row hover */
+.today-task-row .today-actions {
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.today-task-row:hover .today-actions {
+    opacity: 1;
+}
+.today-task-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 4px;
+}

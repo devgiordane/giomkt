@@ -99,6 +99,8 @@ class Task(Base):
     priority = Column(Integer, default=4)                  # 1=red, 2=orange, 3=blue, 4=none
     due_date = Column(Date, nullable=True)
     deadline = Column(Date, nullable=True)
+    start_time = Column(String(5), nullable=True)      # "HH:MM" format
+    duration_minutes = Column(Integer, nullable=True)   # e.g. 30, 60, 90
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
 
@@ -159,8 +161,31 @@ class Alert(Base):
 
 
 def init_db():
-    """Create all tables in the database."""
+    """Create all tables and run column migrations for existing databases."""
     Base.metadata.create_all(bind=engine)
+    _migrate_tasks_columns()
+
+
+def _migrate_tasks_columns():
+    """Add new columns to tasks table if they don't exist (SQLite ALTER TABLE)."""
+    migrations = [
+        "ALTER TABLE tasks ADD COLUMN parent_id INTEGER REFERENCES tasks(id)",
+        "ALTER TABLE tasks ADD COLUMN section VARCHAR(100)",
+        "ALTER TABLE tasks ADD COLUMN priority INTEGER DEFAULT 4",
+        "ALTER TABLE tasks ADD COLUMN due_date DATE",
+        "ALTER TABLE tasks ADD COLUMN deadline DATE",
+        "ALTER TABLE tasks ADD COLUMN completed_at DATETIME",
+        "ALTER TABLE tasks ADD COLUMN start_time VARCHAR(5)",
+        "ALTER TABLE tasks ADD COLUMN duration_minutes INTEGER",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(__import__("sqlalchemy").text(sql))
+                conn.commit()
+            except Exception:
+                # Column already exists — safe to ignore
+                pass
 
 
 @contextmanager
