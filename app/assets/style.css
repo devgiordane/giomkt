@@ -1,0 +1,87 @@
+#sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 220px;
+    background: #1a1a2e;
+    padding: 1rem;
+    overflow-y: auto;
+    z-index: 1000;
+}
+
+#page-content {
+    margin-left: 230px;
+    padding: 1.5rem;
+}
+
+.nav-link {
+    color: #ccc !important;
+}
+
+.nav-link:hover,
+.nav-link.active {
+    color: #fff !important;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+}
+
+.sidebar-brand {
+    color: #fff;
+    font-size: 1.2rem;
+    font-weight: bold;
+    padding: 0.5rem 0 1rem 0;
+    display: block;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    margin-bottom: 1rem;
+}
+
+.sidebar-brand:hover {
+    color: #adb5bd;
+}
+
+.kpi-card {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+}
+
+.kpi-value {
+    font-size: 2rem;
+    font-weight: bold;
+}
+
+.kpi-label {
+    font-size: 0.85rem;
+    color: #adb5bd;
+}
+
+/* Tasks page */
+.task-section .card-header {
+    background: rgba(255, 255, 255, 0.05);
+    font-size: 0.95rem;
+    letter-spacing: 0.03em;
+}
+
+.task-section .list-group-item {
+    background: transparent;
+    border-radius: 0;
+}
+
+.task-section .list-group-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+/* Checklist checkbox alignment */
+.form-check-input {
+    width: 1.1em;
+    height: 1.1em;
+    margin-top: 0.15em;
+    cursor: pointer;
+}
+
+/* Subtask indentation line */
+.task-subtask {
+    border-left: 2px solid rgba(255, 255, 255, 0.12) !important;
+    margin-left: 8px;
+}
