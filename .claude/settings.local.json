@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Bash(python -c \"from app.database import get_session, Task, TaskLabel, TaskLabelAssoc, TaskComment, get_next_due_date, complete_recurring_task; print\\(''database.py imports OK''\\)\")",
+      "Bash(python -m poetry run python -c \"from app.database import get_session, Task, TaskLabel, TaskLabelAssoc, TaskComment, get_next_due_date, complete_recurring_task; print\\(''database.py imports OK''\\)\")",
+      "Bash(poetry run python -c \":*)",
+      "Bash(poetry run:*)"
     ]
   }
 }

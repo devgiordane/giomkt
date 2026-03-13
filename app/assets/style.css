@@ -104,3 +104,103 @@
     background: rgba(255, 255, 255, 0.04);
     border-radius: 4px;
 }
+
+/* ---- Quick Add modal ---- */
+
+/* Wrapper positions the highlight overlay behind the real input */
+.quick-add-wrapper {
+    position: relative;
+}
+
+/* Highlight overlay — same font/size/padding as the input, sits behind it */
+.quick-add-highlight {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    padding: 0.375rem 0.75rem;  /* matches Bootstrap .form-control */
+    font-size: 1.05rem;
+    font-family: inherit;
+    white-space: pre;
+    overflow: hidden;
+    pointer-events: none;
+    color: transparent;         /* text itself invisible — only marks show */
+    border: 1px solid transparent;
+    border-radius: 0.375rem;
+    line-height: 1.5;
+}
+
+/* Token highlight colours */
+.quick-add-highlight mark {
+    background: transparent;
+    border-radius: 3px;
+    padding: 1px 0;
+}
+.qa-hl-date    { background: rgba(99, 179, 237, 0.25) !important; color: transparent; }
+.qa-hl-time    { background: rgba(154, 230, 180, 0.25) !important; color: transparent; }
+.qa-hl-priority{ background: rgba(252, 129, 74, 0.30) !important; color: transparent; }
+.qa-hl-label   { background: rgba(159, 122, 234, 0.30) !important; color: transparent; }
+.qa-hl-deadline{ background: rgba(252, 211, 77, 0.30) !important; color: transparent; }
+.qa-hl-section { background: rgba(160, 174, 192, 0.25) !important; color: transparent; }
+
+.quick-add-input {
+    position: relative;         /* sits above the overlay */
+    font-size: 1.05rem;
+    background: transparent !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    color: #fff !important;
+    caret-color: #fff;
+}
+
+.quick-add-input:focus {
+    background: transparent !important;
+    border-color: rgba(99, 179, 237, 0.5) !important;
+    box-shadow: 0 0 0 0.2rem rgba(99, 179, 237, 0.15) !important;
+}
+
+/* Show a subtle bg on the wrapper instead */
+.quick-add-wrapper {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 0.375rem;
+}
+
+.quick-add-input::placeholder {
+    color: rgba(255, 255, 255, 0.35) !important;
+    font-size: 0.92rem;
+}
+
+.quick-add-preview {
+    min-height: 28px;
+    font-size: 0.85rem;
+    padding: 4px 0;
+}
+
+.qa-preview-title {
+    font-weight: 500;
+    color: #e2e8f0;
+    margin-right: 2px;
+}
+
+.qa-preview-badge {
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+/* Sidebar keyboard shortcut hint */
+.sidebar-shortcut-hint {
+    position: absolute;
+    bottom: 1rem;
+    left: 1rem;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.35);
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.sidebar-shortcut-hint kbd {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.6);
+}
