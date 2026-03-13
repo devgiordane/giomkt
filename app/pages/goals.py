@@ -3,7 +3,7 @@
 from datetime import date
 
 import dash
-from dash import html, dcc, callback, Output, Input, State, no_update, ctx
+from dash import html, dcc, callback, Output, Input, State, no_update, ctx, ALL
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 from sqlalchemy import func, extract
@@ -62,7 +62,7 @@ layout = dbc.Container([
         dbc.Col([dbc.Label("Ano:"), dbc.Input(id="goals-sel-year", type="number", value=date.today().year, min=2020, max=2030)], md=2, className="mb-3"),
     ]),
 
-    # View Mode Toggle
+    # View Mode Toggle & Sort
     dbc.Row([
         dbc.Col([
             dbc.RadioItems(
@@ -75,11 +75,24 @@ layout = dbc.Container([
                 inline=True,
                 className="mb-3"
             )
-        ], md=12)
+        ], md=8),
+        dbc.Col([
+            dcc.Dropdown(
+                id="goals-sort-mode",
+                options=[
+                    {"label": "Ordenação padrão", "value": "default"},
+                    {"label": "Mais próximo da meta", "value": "closest"},
+                    {"label": "Mais longe da meta", "value": "farthest"},
+                ],
+                value="default",
+                clearable=False,
+                className="mb-3"
+            )
+        ], md=4)
     ]),
 
     # Progress bars
-    html.Div(id="goals-progress", className="mb-4"),
+    dbc.Row(id="goals-progress", className="mb-4 g-3"),
 
     # Chart
     dcc.Graph(id="goals-chart", config={"displayModeBar": False}),
@@ -96,8 +109,9 @@ layout = dbc.Container([
     Input("goals-sel-month", "value"),
     Input("goals-sel-year", "value"),
     Input("goals-view-mode", "value"),
+    Input("goals-sort-mode", "value"),
 )
-def load_goals(_refresh, month, year, view_mode):
+def load_goals(_refresh, month, year, view_mode, sort_mode):
     from app.database import get_session, ProductGoal, Sale, Product
 
     month = month or date.today().month
@@ -110,6 +124,8 @@ def load_goals(_refresh, month, year, view_mode):
         chart_names = []
         chart_targets = []
         chart_actuals = []
+
+        processed_goals = []
 
         for g in goals:
             product = session.get(Product, g.product_id)
@@ -162,26 +178,76 @@ def load_goals(_refresh, month, year, view_mode):
             avg_val = avg_commission if is_comm else avg_revenue
             
             val_pct = min(int(actual_val / target_val * 100), 100) if target_val else 0
+            
+            # Use raw percentage for accurate sorting
+            raw_val_pct = (actual_val / target_val * 100) if target_val else 0
+            
+            processed_goals.append({
+                'product': product,
+                'g': g,
+                'actual_count': actual_count,
+                'sales_pct': sales_pct,
+                'actual_val': actual_val,
+                'target_val': target_val,
+                'val_pct': val_pct,
+                'raw_val_pct': raw_val_pct,
+                'avg_val': avg_val,
+                'is_comm': is_comm
+            })
+
+        if sort_mode == "closest":
+            # Sort by highest completion percentage first, then by raw sales amount for ties
+            processed_goals = sorted(processed_goals, key=lambda x: (x['sales_pct'], x['actual_count']), reverse=True)
+        elif sort_mode == "farthest":
+            # Sort by lowest completion percentage first, then by raw sales amount for ties
+            processed_goals = sorted(processed_goals, key=lambda x: (x['sales_pct'], x['actual_count']), reverse=False)
+
+        for item in processed_goals:
+            product = item['product']
+            g = item['g']
+            actual_count = item['actual_count']
+            sales_pct = item['sales_pct']
+            actual_val = item['actual_val']
+            target_val = item['target_val']
+            val_pct = item['val_pct']
+            avg_val = item['avg_val']
+            is_comm = item['is_comm']
 
             color = "success" if sales_pct >= 100 else "primary" if sales_pct >= 50 else "warning"
             val_color = "success" if val_pct >= 100 else "primary" if val_pct >= 50 else "warning"
 
             progress_items.append(
-                dbc.Card(dbc.CardBody([
-                    html.H5(product.name, className="mb-2"),
-                    html.P(f"Vendas: {actual_count} / {g.sales_target}", className="mb-1") if g.sales_target else None,
-                    dbc.Progress(value=sales_pct, color=color, className="mb-2",
-                                 label=f"{sales_pct}%", style={"height": "24px"}) if g.sales_target else None,
-                    
-                    html.P(f"{'Comissão' if is_comm else 'Receita'}: R$ {actual_val:,.2f} / R$ {target_val:,.2f}", className="mb-1") if target_val else None,
-                    dbc.Progress(value=val_pct, color=val_color, className="mb-2",
-                                 label=f"{val_pct}%", style={"height": "24px"}) if target_val else None,
-                                 
-                    html.P([
-                        html.I(className="bi bi-graph-up me-1 text-info"),
-                        f"Projeção baseada na média (últimos 3 meses): R$ {avg_val:,.2f}"
-                    ], className="mb-0 mt-3 text-muted small") if avg_val > 0 else None
-                ]), className="kpi-card mb-3")
+                dbc.Col(
+                    dbc.Card(dbc.CardBody([
+                        dbc.Row([
+                            dbc.Col(html.H5(product.name, className="mb-3 text-truncate", title=product.name)),
+                            dbc.Col(
+                                dbc.Button(html.I(className="bi bi-pencil"), size="sm", color="link", 
+                                           className="p-0 text-muted", 
+                                           id={"type": "goals-edit-btn", "index": g.id},
+                                           n_clicks=0), 
+                                width="auto"
+                            )
+                        ], className="align-items-start"),
+                        html.Div([
+                            html.P(f"Vendas: {actual_count} / {g.sales_target}", className="mb-1 fw-bold fs-6") if g.sales_target else None,
+                            dbc.Progress(value=sales_pct, color=color, className="mb-3",
+                                        label=f"{sales_pct}%", style={"height": "20px"}) if g.sales_target else None,
+                            
+                            html.P(f"{'Comissão' if is_comm else 'Receita'}: R$ {actual_val:,.2f} / R$ {target_val:,.2f}", className="mb-1 fw-bold fs-6") if target_val else None,
+                            dbc.Progress(value=val_pct, color=val_color, className="mb-3",
+                                        label=f"{val_pct}%", style={"height": "20px"}) if target_val else None,
+                        ], style={"minHeight": "100px"}),
+                        
+                        html.Hr(className="my-2"),
+                        html.P([
+                            html.I(className="bi bi-graph-up me-1 text-info"),
+                            html.Span("Média últimos 3m: ", className="text-muted"),
+                            html.Strong(f"R$ {avg_val:,.2f}")
+                        ], className="mb-0 text-muted small") if avg_val > 0 else None
+                    ]), className="kpi-card h-100 shadow-sm"),
+                    md=3, sm=6, xs=12
+                )
             )
 
             chart_names.append(product.name)
@@ -189,7 +255,7 @@ def load_goals(_refresh, month, year, view_mode):
             chart_actuals.append(actual_val)
 
     if not progress_items:
-        progress_items = [dbc.Alert("Nenhuma meta definida para este período.", color="info")]
+        progress_items = [dbc.Col(dbc.Alert("Nenhuma meta definida para este período.", color="info"), md=12)]
 
     # Chart
     fig = go.Figure()
@@ -227,13 +293,29 @@ def _product_options():
     Output("goals-add-commission", "value"),
     Input("goals-open-add", "n_clicks"),
     Input("goals-add-cancel", "n_clicks"),
+    Input({"type": "goals-edit-btn", "index": ALL}, "n_clicks"),
     State("goals-sel-month", "value"),
     State("goals-sel-year", "value"),
     prevent_initial_call=True,
 )
-def toggle_add(_o, _c, sel_month, sel_year):
-    if ctx.triggered_id == "goals-open-add":
+def toggle_add(_o, _c, edit_clicks, sel_month, sel_year):
+    triggered = ctx.triggered_id
+    
+    if triggered == "goals-open-add":
         return True, _product_options(), None, sel_month or date.today().month, sel_year or date.today().year, None, None, None
+    
+    if isinstance(triggered, dict) and triggered.get("type") == "goals-edit-btn":
+        # Check if actually clicked
+        if not any(edit_clicks):
+            return no_update
+            
+        goal_id = triggered.get("index")
+        from app.database import get_session, ProductGoal
+        with get_session() as session:
+            g = session.get(ProductGoal, goal_id)
+            if g:
+                return True, _product_options(), g.product_id, g.month, g.year, g.sales_target, g.revenue_target, g.commission_target
+
     return False, no_update, no_update, no_update, no_update, no_update, no_update, no_update
 
 
