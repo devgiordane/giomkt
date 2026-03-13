@@ -28,7 +28,7 @@ def parse_task_ai(message_text: str) -> dict:
         )
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5-mini-2025-08-07",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Message: {message_text}"},

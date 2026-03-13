@@ -2,11 +2,12 @@
 
 import sys
 import os
+import urllib.parse
 
 # Ensure the project root is on the path when running as `python app/main.py`
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect
 import dash
 import dash_bootstrap_components as dbc
 
@@ -59,6 +60,30 @@ def evolution_webhook():
     data = request.get_json(force=True, silent=True) or {}
     result = process_webhook(data)
     return jsonify(result)
+
+
+@server.route("/api/eduzz/callback", methods=["GET"])
+def eduzz_callback():
+    """OAuth2 callback — exchange code for token and redirect back to accounts page."""
+    code = request.args.get("code")
+    account_id = request.args.get("state")
+
+    if not code or not account_id:
+        return redirect("/eduzz/accounts?error=missing_params")
+
+    try:
+        account_id = int(account_id)
+    except (ValueError, TypeError):
+        return redirect("/eduzz/accounts?error=invalid_state")
+
+    from app.services.eduzz import exchange_code
+    result = exchange_code(code, account_id)
+
+    if "error" in result:
+        error_msg = urllib.parse.quote(result["error"])
+        return redirect(f"/eduzz/accounts?error={error_msg}")
+
+    return redirect("/eduzz/accounts?connected=1")
 
 
 # ---------------------------------------------------------------------------

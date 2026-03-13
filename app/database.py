@@ -57,6 +57,8 @@ class Client(Base):
     notes = relationship("Note", back_populates="client", foreign_keys="Note.client_id")
     alert_rules = relationship("AlertRule", back_populates="client", cascade="all, delete-orphan")
     alerts = relationship("Alert", back_populates="client", cascade="all, delete-orphan")
+    services = relationship("Service", back_populates="client")
+    sites = relationship("Site", back_populates="client")
 
 
 class ClientBudgetConfig(Base):
@@ -200,6 +202,97 @@ class Alert(Base):
     rule = relationship("AlertRule", back_populates="alerts")
 
 
+class Service(Base):
+    __tablename__ = "services"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False)
+    type = Column(String(50), nullable=False)  # dominio, hospedagem, servidor, api, software
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
+    value = Column(Float, default=0.0)
+    billing_cycle = Column(String(20), default="monthly")  # monthly, annual
+    due_date = Column(Date, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    client = relationship("Client", back_populates="services")
+
+
+class EduzzAccount(Base):
+    __tablename__ = "eduzz_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False)
+    api_key = Column(String(500), nullable=True)      # legacy, kept for compat
+    email = Column(String(200), nullable=True)
+    access_token = Column(Text, nullable=True)         # OAuth2 bearer token
+    eduzz_user_id = Column(String(100), nullable=True) # Eduzz user id from token response
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    products = relationship("Product", back_populates="account", cascade="all, delete-orphan")
+
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("eduzz_accounts.id"), nullable=False)
+    product_id_eduzz = Column(String(100), nullable=True)
+    name = Column(String(300), nullable=False)
+    price = Column(Float, default=0.0)
+    commission_percent = Column(Float, default=0.0)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    account = relationship("EduzzAccount", back_populates="products")
+    sales = relationship("Sale", back_populates="product", cascade="all, delete-orphan")
+    goals = relationship("ProductGoal", back_populates="product", cascade="all, delete-orphan")
+
+
+class Sale(Base):
+    __tablename__ = "sales"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    date = Column(Date, nullable=False, default=date.today, index=True)
+    value = Column(Float, default=0.0)
+    commission_value = Column(Float, default=0.0)
+    quantity = Column(Integer, default=1)
+    source = Column(String(50), default="manual")  # manual, eduzz_api
+    external_id = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    product = relationship("Product", back_populates="sales")
+
+
+class ProductGoal(Base):
+    __tablename__ = "product_goals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    month = Column(Integer, nullable=False)
+    year = Column(Integer, nullable=False)
+    sales_target = Column(Integer, default=0)
+    revenue_target = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    product = relationship("Product", back_populates="goals")
+
+
+class Site(Base):
+    __tablename__ = "sites"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(200), nullable=False)
+    domain = Column(String(300), nullable=False)
+    umami_site_id = Column(String(100), nullable=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    client = relationship("Client", back_populates="sites")
+
+
 def init_db():
     """Create all tables and run column migrations for existing databases."""
     Base.metadata.create_all(bind=engine)
@@ -220,6 +313,11 @@ def _migrate_tasks_columns():
         "ALTER TABLE tasks ADD COLUMN recurrence VARCHAR(100)",
         "ALTER TABLE tasks ADD COLUMN recurrence_end DATE",
     ]
+    migrations += [
+        "ALTER TABLE eduzz_accounts ADD COLUMN access_token TEXT",
+        "ALTER TABLE eduzz_accounts ADD COLUMN eduzz_user_id VARCHAR(100)",
+    ]
+
     with engine.connect() as conn:
         for sql in migrations:
             try:

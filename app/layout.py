@@ -10,20 +10,33 @@ import dash_bootstrap_components as dbc
 # ---------------------------------------------------------------------------
 
 def create_sidebar():
+    from app.config import FEATURE_FACEBOOK
+
     nav_items = [
         {"label": "Dashboard", "href": "/", "icon": "bi bi-speedometer2"},
-        {"label": "Clientes", "href": "/clients", "icon": "bi bi-people"},
-        {"label": "Campanhas", "href": "/campaigns", "icon": "bi bi-megaphone"},
+        {"label": "Assistente IA", "href": "/ai-assistant", "icon": "bi bi-robot"},
         {"label": "Hoje", "href": "/today", "icon": "bi bi-sun"},
         {"label": "Tarefas", "href": "/tasks", "icon": "bi bi-check2-square"},
         {"label": "Em breve", "href": "/upcoming", "icon": "bi bi-calendar-week"},
+        {"label": "Produtos", "href": "/products", "icon": "bi bi-box-seam"},
+        {"label": "Metas", "href": "/goals", "icon": "bi bi-bullseye"},
+        {"label": "Vendas", "href": "/sales", "icon": "bi bi-cart-check"},
+        {"label": "Serviços", "href": "/services", "icon": "bi bi-hdd-rack"},
+        {"label": "Analytics", "href": "/analytics", "icon": "bi bi-bar-chart-line"},
+        {"label": "Relatórios", "href": "/reports", "icon": "bi bi-file-earmark-text"},
+        {"label": "Clientes", "href": "/clients", "icon": "bi bi-people"},
         {"label": "Etiquetas", "href": "/labels", "icon": "bi bi-tags"},
         {"label": "Notas", "href": "/notes", "icon": "bi bi-journal-text"},
-        {"label": "Alertas", "href": "/alerts", "icon": "bi bi-bell"},
-        {"label": "Regras de Alerta", "href": "/alerts/rules", "icon": "bi bi-sliders"},
         {"label": "Wiki", "href": "/wiki", "icon": "bi bi-book"},
-        {"label": "WhatsApp", "href": "/settings/whatsapp", "icon": "bi bi-whatsapp"},
     ]
+
+    if FEATURE_FACEBOOK:
+        nav_items.extend([
+            {"label": "Campanhas", "href": "/campaigns", "icon": "bi bi-megaphone"},
+            {"label": "Alertas", "href": "/alerts", "icon": "bi bi-bell"},
+            {"label": "Regras de Alerta", "href": "/alerts/rules", "icon": "bi bi-sliders"},
+            {"label": "WhatsApp", "href": "/settings/whatsapp", "icon": "bi bi-whatsapp"},
+        ])
 
     nav_links = []
     for item in nav_items:

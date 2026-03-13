@@ -204,3 +204,38 @@
     font-size: 0.75rem;
     color: rgba(255, 255, 255, 0.6);
 }
+
+/* ---- AI Assistant ---- */
+
+.ai-textarea {
+    font-size: 1rem;
+    min-height: 200px;
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    color: #e2e8f0 !important;
+}
+
+.ai-textarea:focus {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(99, 179, 237, 0.5) !important;
+    box-shadow: 0 0 0 0.2rem rgba(99, 179, 237, 0.15) !important;
+}
+
+/* ---- Goals progress bars ---- */
+
+.progress {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.progress-bar {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+/* ---- Service type badges ---- */
+
+.svc-type-dominio    { background: #3b82f6; }
+.svc-type-hospedagem { background: #8b5cf6; }
+.svc-type-servidor   { background: #ef4444; }
+.svc-type-api        { background: #f59e0b; }
+.svc-type-software   { background: #10b981; }
