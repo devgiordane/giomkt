@@ -165,27 +165,33 @@ def sync_sales(account_id: int, start_date: date, end_date: date) -> dict:
 
                 net_gain = float((s.get("netGain") or {}).get("value", 0))
 
-                # Track user's gain logic (as co-producer / affiliate / partner)
+                MY_EMAIL = "sh.brunooliveira@gmail.com"
+
+                # user_gain = minha parte (coprodutor, parceiro, afiliado ou produtor principal)
                 user_gain = 0.0
                 is_user_gain = False
-                
-                for aff in s.get("affiliates") or []:
-                    if isinstance(aff, dict) and aff.get("email") == "sh.brunooliveira@gmail.com":
-                        user_gain += float((aff.get("netGain") or {}).get("value", 0))
-                        is_user_gain = True
 
+                # Coprodutor / parceiro
                 for ptn in s.get("partners") or []:
-                    if isinstance(ptn, dict) and ptn.get("email") == "sh.brunooliveira@gmail.com":
+                    if isinstance(ptn, dict) and ptn.get("email") == MY_EMAIL:
                         user_gain += float((ptn.get("netGain") or {}).get("value", 0))
                         is_user_gain = True
 
-                # Determine the value for this dashboard
-                # We save two things conceptually:
-                # `value`: the total netGain of the sale (the product revenue)
-                # `commission_value`: the user's portion (co-producer/partner revenue)
-                # Later, in the report, the user can toggle between viewing Total Revenue or My Revenue.
+                # Afiliado
+                for aff in s.get("affiliates") or []:
+                    if isinstance(aff, dict) and aff.get("email") == MY_EMAIL:
+                        user_gain += float((aff.get("netGain") or {}).get("value", 0))
+                        is_user_gain = True
+
+                # Recebedor direto (produtor principal da venda)
+                recipient = s.get("recipient") or {}
+                if not is_user_gain and recipient.get("email") == MY_EMAIL:
+                    user_gain = net_gain
+                    is_user_gain = True
+
+                # Fallback: se nenhuma identificação bateu, assume produtor principal
                 if not is_user_gain:
-                    user_gain = net_gain # If the user is the main producer, their gain is the net gain.
+                    user_gain = net_gain
                 
                 # Update existing or add new
                 if existing:

@@ -21,6 +21,12 @@ export function useCreateNote() {
   return useMutation((body: CreateNoteBody) => api.post<{ id: number }>("/notes", body))
 }
 
+export function useUpdateNote() {
+  return useMutation(({ id, content }: { id: number; content: string }) =>
+    api.put<{ id: number }>(`/notes/${id}`, { content }),
+  )
+}
+
 export function useDeleteNote() {
   return useMutation((id: number) => api.delete(`/notes/${id}`))
 }
