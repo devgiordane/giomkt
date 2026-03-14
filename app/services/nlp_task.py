@@ -274,7 +274,7 @@ def parse_task_text(text: str) -> dict:
         remaining = remaining[:month_text_match.start()] + remaining[month_text_match.end():]
 
     # ------------------------------------------------------------------
-    # 5m. Duration: "por 1h", "por 30min", "por 1h30", "por 1h30min", "por 90 min"
+    # 5m. Duration: "por 1h", "por 2h", "por 30min", "por 1h30", "por 1h30min", "por 90 min"
     # ------------------------------------------------------------------
     dur_match = re.search(
         r'\bpor\s+(?:(\d+)h\s*(?:(\d+)\s*min)?|(\d+)\s*min(?:utos?)?)\b',

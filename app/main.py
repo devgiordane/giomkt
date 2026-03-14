@@ -62,6 +62,35 @@ def evolution_webhook():
     return jsonify(result)
 
 
+@server.route("/api/eduzz/webhook", methods=["POST"])
+def eduzz_webhook_receiver():
+    """Receive Eduzz webhook events and persist them."""
+    from app.services.eduzz_webhooks import save_received_event, process_sale_event
+    from app.database import get_session, WebhookSubscription
+
+    data = request.get_json(force=True, silent=True) or {}
+    event_type = data.get("event", "unknown")
+
+    # Try to identify the subscription by looking up the URL (signature validation TBD)
+    sub_id = None
+    with get_session() as session:
+        sub = session.query(WebhookSubscription).filter(
+            WebhookSubscription.url.contains(request.host)
+        ).first()
+        if sub:
+            sub_id = sub.id
+
+    save_received_event(event_type, data, sub_id)
+
+    # Auto-process sale events
+    try:
+        process_sale_event(data)
+    except Exception:
+        pass
+
+    return jsonify({"status": "received"}), 200
+
+
 @server.route("/api/eduzz/callback", methods=["GET"])
 def eduzz_callback():
     """OAuth2 callback — exchange code for token and redirect back to accounts page."""

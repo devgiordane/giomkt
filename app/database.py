@@ -231,6 +231,9 @@ class EduzzAccount(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     products = relationship("Product", back_populates="account", cascade="all, delete-orphan")
+    webhook_subscriptions = relationship(
+        "WebhookSubscription", back_populates="account", cascade="all, delete-orphan"
+    )
 
 
 class Product(Base):
@@ -248,6 +251,7 @@ class Product(Base):
     account = relationship("EduzzAccount", back_populates="products")
     sales = relationship("Sale", back_populates="product", cascade="all, delete-orphan")
     goals = relationship("ProductGoal", back_populates="product", cascade="all, delete-orphan")
+    message_flows = relationship("ProductMessageFlow", back_populates="product", cascade="all, delete-orphan")
 
 
 class Sale(Base):
@@ -264,6 +268,21 @@ class Sale(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     product = relationship("Product", back_populates="sales")
+
+
+class ProductMessageFlow(Base):
+    """Stores automated message templates for products based on sale status."""
+    __tablename__ = "product_message_flows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    status = Column(String(50), nullable=False)  # waitingPayment, paid, canceled, recovering, etc.
+    template = Column(Text, nullable=False)
+    active = Column(Boolean, default=True)
+    delay_minutes = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    product = relationship("Product", back_populates="message_flows")
 
 
 class ProductGoal(Base):
@@ -294,6 +313,41 @@ class Site(Base):
     client = relationship("Client", back_populates="sites")
 
 
+class WebhookSubscription(Base):
+    """Stores Eduzz webhook subscriptions managed by this app."""
+    __tablename__ = "webhook_subscriptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("eduzz_accounts.id"), nullable=False)
+    eduzz_subscription_id = Column(String(100), nullable=True, unique=True)
+    name = Column(String(200), nullable=False)
+    url = Column(Text, nullable=False)
+    status = Column(String(20), default="disabled")   # active / disabled
+    events = Column(Text, nullable=True)              # JSON list of event names
+    secret_id = Column(String(200), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    account = relationship("EduzzAccount", back_populates="webhook_subscriptions")
+    received_events = relationship(
+        "WebhookEvent", back_populates="subscription", cascade="all, delete-orphan"
+    )
+
+
+class WebhookEvent(Base):
+    """Stores individual webhook events received from Eduzz."""
+    __tablename__ = "webhook_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    subscription_id = Column(Integer, ForeignKey("webhook_subscriptions.id"), nullable=True)
+    event_type = Column(String(100), nullable=False, index=True)
+    payload = Column(Text, nullable=False)            # raw JSON payload
+    processed = Column(Boolean, default=False)
+    received_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    subscription = relationship("WebhookSubscription", back_populates="received_events")
+
+
 def init_db():
     """Create all tables and run column migrations for existing databases."""
     Base.metadata.create_all(bind=engine)
@@ -302,6 +356,9 @@ def init_db():
 
 def _migrate_tasks_columns():
     """Add new columns to tasks table if they don't exist (SQLite ALTER TABLE)."""
+    # Create ProductMessageFlow table if it doesn't exist yet
+    ProductMessageFlow.__table__.create(engine, checkfirst=True)
+
     migrations = [
         "ALTER TABLE tasks ADD COLUMN parent_id INTEGER REFERENCES tasks(id)",
         "ALTER TABLE tasks ADD COLUMN section VARCHAR(100)",
@@ -318,6 +375,9 @@ def _migrate_tasks_columns():
         "ALTER TABLE eduzz_accounts ADD COLUMN access_token TEXT",
         "ALTER TABLE eduzz_accounts ADD COLUMN eduzz_user_id VARCHAR(100)",
         "ALTER TABLE product_goals ADD COLUMN commission_target FLOAT DEFAULT 0.0",
+    ]
+    migrations += [
+        "ALTER TABLE webhook_subscriptions ADD COLUMN updated_at DATETIME",
     ]
 
     with engine.connect() as conn:

@@ -303,7 +303,14 @@ time_modal = dbc.Modal([
         dbc.Row([
             dbc.Col([
                 dbc.Label("Hora de início"),
-                dbc.Input(id="today-time-start", type="time", step=900),  # 15min steps
+                dbc.Select(
+                    id="today-time-start",
+                    options=[
+                        {"label": f"{h:02d}:{m:02d}", "value": f"{h:02d}:{m:02d}"}
+                        for h in range(0, 24)
+                        for m in (0, 15, 30, 45)
+                    ],
+                ),
             ], md=6, className="mb-3"),
             dbc.Col([
                 dbc.Label("Duração"),
@@ -371,7 +378,7 @@ add_task_modal = dbc.Modal([
                                 options=[{"label":"🚩 P1","value":1},{"label":"🔶 P2","value":2},
                                          {"label":"🔷 P3","value":3},{"label":"⬜ Nenhuma","value":4}],
                                 value=4)], md=4, className="mb-3"),
-            dbc.Col([dbc.Label("Hora de início"), dbc.Input(id="today-add-start", type="time", step=900)], md=4, className="mb-3"),
+            dbc.Col([dbc.Label("Hora de início"), dbc.Select(id="today-add-start", options=[{"label": f"{h:02d}:{m:02d}", "value": f"{h:02d}:{m:02d}"} for h in range(0, 24) for m in (0, 15, 30, 45)])], md=4, className="mb-3"),
             dbc.Col([dbc.Label("Duração"), dbc.Select(id="today-add-duration", options=DURATION_OPTIONS, value=30)], md=4, className="mb-3"),
         ]),
         dbc.Row([
@@ -596,7 +603,7 @@ def toggle_done(check_values, check_ids, refresh):
     if not triggered:
         return no_update, no_update, no_update
     task_id = triggered["index"]
-    checked = next((v for v, i in zip(check_values, check_ids) if i["index"] == task_id), [])
+    checked = next((v for v, i in zip(check_values, check_ids) if i is not None and i.get("index") == task_id), [])
     new_status = "done" if task_id in (checked or []) else "pending"
     from app.database import get_session, Task
     with get_session() as session:

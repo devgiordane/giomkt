@@ -21,6 +21,7 @@ def create_sidebar():
         {"label": "Produtos", "href": "/products", "icon": "bi bi-box-seam"},
         {"label": "Metas", "href": "/goals", "icon": "bi bi-bullseye"},
         {"label": "Vendas", "href": "/sales", "icon": "bi bi-cart-check"},
+        {"label": "Webhooks", "href": "/webhooks", "icon": "bi bi-plugin"},
         {"label": "Serviços", "href": "/services", "icon": "bi bi-hdd-rack"},
         {"label": "Analytics", "href": "/analytics", "icon": "bi bi-bar-chart-line"},
         {"label": "Relatórios", "href": "/reports", "icon": "bi bi-file-earmark-text"},

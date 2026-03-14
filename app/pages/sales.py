@@ -47,12 +47,13 @@ layout = dbc.Container([
 
     # Header
     dbc.Row([
-        dbc.Col(html.H2([html.I(className="bi bi-cart-check me-2"), "Vendas"]), md=8),
-        dbc.Col(
+        dbc.Col(html.H2([html.I(className="bi bi-cart-check me-2"), "Vendas"]), md=6),
+        dbc.Col([
+            dbc.Button([html.I(className="bi bi-arrow-repeat me-2"), "Atualizar 7 Dias"],
+                       id="sales-sync-7d", color="secondary", className="me-2"),
             dbc.Button([html.I(className="bi bi-plus-circle me-2"), "Nova Venda"],
                        id="sales-open-add", color="primary"),
-            md=4, className="text-end",
-        ),
+        ], md=6, className="text-end"),
     ], className="mb-4 mt-2 align-items-center"),
 
     # Filters
@@ -69,6 +70,12 @@ layout = dbc.Container([
 
     dbc.Toast(id="sales-toast", header="Vendas", is_open=False, dismissable=True, duration=3000,
               style={"position": "fixed", "bottom": "1rem", "right": "1rem", "zIndex": 9999}),
+              
+    dcc.Loading(
+        id="loading-sync-sales",
+        type="circle",
+        children=html.Div(id="sales-sync-output", style={"display": "none"})
+    ),
 ], fluid=True)
 
 
@@ -231,13 +238,47 @@ def save_add(_n, product_id, sale_date, value, commission, qty, refresh):
 @callback(
     Output("sales-del-modal", "is_open"), Output("sales-del-id", "data"),
     Input("sales-del-btn", "n_clicks"), Input("sales-del-cancel", "n_clicks"),
-    State("sales-grid", "selectedRows"),
     prevent_initial_call=True,
 )
-def toggle_delete(_d, _c, selected):
+def toggle_delete(_d, _c):
+    return False, no_update
     if ctx.triggered_id == "sales-del-cancel" or not selected:
         return False, no_update
     return True, selected[0]["id"]
+
+
+@callback(
+    Output("sales-toast", "children", allow_duplicate=True),
+    Output("sales-toast", "is_open", allow_duplicate=True),
+    Output("sales-refresh", "data", allow_duplicate=True),
+    Input("sales-sync-7d", "n_clicks"),
+    State("sales-refresh", "data"),
+    prevent_initial_call=True,
+)
+def sync_sales_7d(n_clicks, refresh):
+    if not n_clicks:
+        return no_update, no_update, no_update
+        
+    from app.services.eduzz import fetch_sales
+    from app.database import get_session, EduzzAccount
+    
+    try:
+        with get_session() as session:
+            accounts = session.query(EduzzAccount).filter_by(active=True).all()
+            if not accounts:
+                return "Nenhuma conta Eduzz ativa encontrada.", True, no_update
+                
+            end_date = datetime.now()
+            start_date = end_date - dash.datetime.timedelta(days=7)
+            
+            total_sales = 0
+            for acc in accounts:
+                fetch_sales(acc.id, start_date=start_date.isoformat(), end_date=end_date.isoformat())
+                total_sales += 1
+                
+        return "Vendas dos últimos 7 dias atualizadas com sucesso!", True, (refresh or 0) + 1
+    except Exception as e:
+        return f"Erro ao atualizar vendas: {e}", True, no_update
 
 
 @callback(
