@@ -381,6 +381,26 @@ def update_quick_add_preview(text):
             )
         )
 
+    if parsed["start_time"]:
+        parts.append(
+            dbc.Badge(
+                [html.I(className="bi bi-clock me-1"), parsed["start_time"]],
+                color="secondary",
+                className="qa-preview-badge",
+            )
+        )
+
+    if parsed["duration_minutes"]:
+        h, m = divmod(parsed["duration_minutes"], 60)
+        dur_str = f"{h}h{m:02d}" if m else f"{h}h" if h else f"{parsed['duration_minutes']}min"
+        parts.append(
+            dbc.Badge(
+                [html.I(className="bi bi-stopwatch me-1"), dur_str],
+                color="secondary",
+                className="qa-preview-badge",
+            )
+        )
+
     if not parts:
         return ""
 
@@ -426,6 +446,8 @@ def save_quick_add(_n_clicks, _n_submit, text, refresh_count):
                 priority=parsed["priority"],
                 due_date=parsed["due_date"],
                 deadline=parsed["deadline"],
+                start_time=parsed["start_time"],
+                duration_minutes=parsed["duration_minutes"],
                 recurrence=parsed["recurrence"] or None,
                 section=parsed["section"] or "Para fazer",
                 status="pending",
