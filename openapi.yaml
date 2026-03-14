@@ -1,0 +1,2823 @@
+openapi: "3.1.0"
+info:
+  title: GioMkt API
+  version: "1.0.0"
+  description: |
+    API REST do GioMkt — plataforma de gestão de marketing digital.
+    Migrada do Plotly Dash para Flask + Next.js.
+  contact:
+    name: GioMkt
+servers:
+  - url: http://localhost:8050
+    description: Desenvolvimento local (Flask)
+  - url: /
+    description: Via Next.js proxy (/api/* → backend)
+
+tags:
+  - name: health
+    description: Status da API
+  - name: dashboard
+    description: KPIs e dados resumidos
+  - name: clients
+    description: Gestão de clientes
+  - name: tasks
+    description: Tarefas e subtarefas
+  - name: labels
+    description: Etiquetas de tarefas
+  - name: campaigns
+    description: Snapshots de gastos em anúncios
+  - name: sales
+    description: Vendas e sincronização Eduzz
+  - name: products
+    description: Produtos Eduzz
+  - name: goals
+    description: Metas por produto/mês
+  - name: services
+    description: Serviços e assinaturas
+  - name: notes
+    description: Notas e wiki
+  - name: alerts
+    description: Alertas de orçamento
+  - name: analytics
+    description: Estatísticas de sites (Umami)
+  - name: eduzz
+    description: Contas Eduzz e OAuth2
+  - name: webhooks
+    description: Webhooks de entrada e assinaturas
+  - name: settings
+    description: Configurações do WhatsApp
+  - name: message-flows
+    description: Fluxos de mensagem automáticos
+  - name: ai
+    description: Assistente de IA
+
+# ---------------------------------------------------------------------------
+# Shared components
+# ---------------------------------------------------------------------------
+components:
+  schemas:
+    # Primitives
+    ISODate:
+      type: string
+      format: date
+      example: "2025-01-31"
+    ISODateTime:
+      type: string
+      format: date-time
+      example: "2025-01-31T14:30:00"
+    HexColor:
+      type: string
+      pattern: "^#[0-9A-Fa-f]{6}$"
+      example: "#3b82f6"
+
+    # Error
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    # Health
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        service:
+          type: string
+      required: [status, service]
+
+    # Dashboard
+    SpendChartPoint:
+      type: object
+      properties:
+        date:
+          $ref: "#/components/schemas/ISODate"
+        label:
+          type: string
+          description: "Formato DD/MM"
+        spend:
+          type: number
+      required: [date, label, spend]
+
+    DashboardKpis:
+      type: object
+      properties:
+        total_clients:
+          type: integer
+        spend_today:
+          type: number
+        active_campaigns:
+          type: integer
+        pending_tasks:
+          type: integer
+        spend_chart_7d:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpendChartPoint"
+      required: [total_clients, spend_today, active_campaigns, pending_tasks, spend_chart_7d]
+
+    # Clients
+    Client:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
+        fb_ad_account_id:
+          type: string
+          nullable: true
+        created_at:
+          $ref: "#/components/schemas/ISODate"
+      required: [id, name, status]
+
+    BudgetConfig:
+      type: object
+      properties:
+        daily_limit:
+          type: number
+        monthly_limit:
+          type: number
+        alert_threshold_pct:
+          type: number
+      required: [daily_limit, monthly_limit, alert_threshold_pct]
+
+    ClientDetail:
+      allOf:
+        - $ref: "#/components/schemas/Client"
+        - type: object
+          properties:
+            budget_config:
+              $ref: "#/components/schemas/BudgetConfig"
+              nullable: true
+            spend_history_30d:
+              type: array
+              items:
+                type: object
+                properties:
+                  date:
+                    $ref: "#/components/schemas/ISODate"
+                  spend:
+                    type: number
+            recent_tasks:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  title:
+                    type: string
+                  status:
+                    type: string
+                    enum: [pending, done]
+                  created_at:
+                    $ref: "#/components/schemas/ISODate"
+            recent_notes:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  content:
+                    type: string
+                  created_at:
+                    $ref: "#/components/schemas/ISODateTime"
+
+    CreateClientBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+          default: active
+        fb_ad_account_id:
+          type: string
+        fb_token:
+          type: string
+      required: [name]
+
+    UpdateClientBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+        fb_ad_account_id:
+          type: string
+        fb_token:
+          type: string
+
+    # Tasks
+    TaskLabel:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        color:
+          $ref: "#/components/schemas/HexColor"
+      required: [id, name, color]
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, done]
+        source:
+          type: string
+          enum: [manual, whatsapp]
+        priority:
+          type: integer
+          enum: [1, 2, 3, 4]
+        section:
+          type: string
+        due_date:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+        deadline:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+        start_time:
+          type: string
+          description: "HH:MM"
+          nullable: true
+        duration_minutes:
+          type: integer
+          nullable: true
+        client_id:
+          type: integer
+          nullable: true
+        client:
+          type: string
+          nullable: true
+        recurrence:
+          type: string
+          description: "none | daily | weekly | monthly"
+        recurrence_end:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+        parent_id:
+          type: integer
+          nullable: true
+        subtasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        subtask_count:
+          type: integer
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskLabel"
+        created_at:
+          $ref: "#/components/schemas/ISODateTime"
+          nullable: true
+        completed_at:
+          $ref: "#/components/schemas/ISODateTime"
+          nullable: true
+      required: [id, title, status, priority, section, recurrence, subtasks, subtask_count, labels]
+
+    TaskComment:
+      type: object
+      properties:
+        id:
+          type: integer
+        content:
+          type: string
+        created_at:
+          $ref: "#/components/schemas/ISODateTime"
+          nullable: true
+      required: [id, content]
+
+    TaskDetail:
+      allOf:
+        - $ref: "#/components/schemas/Task"
+        - type: object
+          properties:
+            comments:
+              type: array
+              items:
+                $ref: "#/components/schemas/TaskComment"
+
+    CreateTaskBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        section:
+          type: string
+          default: Geral
+        priority:
+          type: integer
+          enum: [1, 2, 3, 4]
+          default: 3
+        due_date:
+          $ref: "#/components/schemas/ISODate"
+        deadline:
+          $ref: "#/components/schemas/ISODate"
+        start_time:
+          type: string
+        duration_minutes:
+          type: integer
+        client_id:
+          type: integer
+        parent_id:
+          type: integer
+        recurrence:
+          type: string
+          default: none
+        recurrence_end:
+          $ref: "#/components/schemas/ISODate"
+        label_ids:
+          type: array
+          items:
+            type: integer
+      required: [title]
+
+    NlpParseResult:
+      type: object
+      properties:
+        title:
+          type: string
+        due_date:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+        priority:
+          type: integer
+          enum: [1, 2, 3, 4]
+        start_time:
+          type: string
+          nullable: true
+        duration_minutes:
+          type: integer
+          nullable: true
+      required: [title, due_date, priority, start_time, duration_minutes]
+
+    TaskOptions:
+      type: object
+      properties:
+        clients:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+        parents:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              title:
+                type: string
+        labels:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskLabel"
+
+    # Campaigns
+    Snapshot:
+      type: object
+      properties:
+        id:
+          type: integer
+        client_id:
+          type: integer
+        client_name:
+          type: string
+        date:
+          $ref: "#/components/schemas/ISODate"
+        spend:
+          type: number
+        impressions:
+          type: integer
+        clicks:
+          type: integer
+      required: [id, client_id, client_name, date, spend, impressions, clicks]
+
+    CampaignsResponse:
+      type: object
+      properties:
+        snapshots:
+          type: array
+          items:
+            $ref: "#/components/schemas/Snapshot"
+        today_by_client:
+          type: array
+          items:
+            type: object
+            properties:
+              client_id:
+                type: integer
+              client_name:
+                type: string
+              spend:
+                type: number
+              impressions:
+                type: integer
+              clicks:
+                type: integer
+        total_spend_today:
+          type: number
+      required: [snapshots, today_by_client, total_spend_today]
+
+    # Sales
+    Sale:
+      type: object
+      properties:
+        id:
+          type: integer
+        product_id:
+          type: integer
+        product:
+          type: string
+        date:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+        value:
+          type: number
+        commission_value:
+          type: number
+        quantity:
+          type: integer
+        source:
+          type: string
+          enum: [manual, eduzz_api]
+        external_id:
+          type: string
+          nullable: true
+      required: [id, product_id, product, value, commission_value, quantity, source]
+
+    SalesKpis:
+      type: object
+      properties:
+        total_qty:
+          type: integer
+        total_value:
+          type: number
+        total_commission:
+          type: number
+        avg_ticket:
+          type: number
+      required: [total_qty, total_value, total_commission, avg_ticket]
+
+    SalesResponse:
+      type: object
+      properties:
+        sales:
+          type: array
+          items:
+            $ref: "#/components/schemas/Sale"
+        kpis:
+          $ref: "#/components/schemas/SalesKpis"
+        month_options:
+          type: array
+          items:
+            type: string
+          description: "Formato YYYY-MM"
+        product_options:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+      required: [sales, kpis, month_options, product_options]
+
+    CreateSaleBody:
+      type: object
+      properties:
+        product_id:
+          type: integer
+        date:
+          $ref: "#/components/schemas/ISODate"
+        value:
+          type: number
+        commission_value:
+          type: number
+        quantity:
+          type: integer
+          default: 1
+      required: [product_id, value]
+
+    # Products
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        account_id:
+          type: integer
+        account_name:
+          type: string
+        product_id_eduzz:
+          type: string
+        price:
+          type: number
+        commission_percent:
+          type: number
+        active:
+          type: boolean
+      required: [id, name, account_id, account_name, active]
+
+    CreateProductBody:
+      type: object
+      properties:
+        name:
+          type: string
+        account_id:
+          type: integer
+        product_id_eduzz:
+          type: string
+        price:
+          type: number
+        commission_percent:
+          type: number
+      required: [name, account_id]
+
+    # Goals
+    Goal:
+      type: object
+      properties:
+        id:
+          type: integer
+        product_id:
+          type: integer
+        product_name:
+          type: string
+        month:
+          type: integer
+        year:
+          type: integer
+        sales_target:
+          type: number
+        revenue_target:
+          type: number
+        commission_target:
+          type: number
+        actual_sales:
+          type: number
+        actual_revenue:
+          type: number
+        actual_commission:
+          type: number
+        avg_revenue_3m:
+          type: number
+        avg_commission_3m:
+          type: number
+        sales_pct:
+          type: number
+        val_pct:
+          type: number
+        target_val:
+          type: number
+        actual_val:
+          type: number
+        avg_val:
+          type: number
+      required: [id, product_id, product_name, month, year]
+
+    UpsertGoalBody:
+      type: object
+      properties:
+        product_id:
+          type: integer
+        month:
+          type: integer
+        year:
+          type: integer
+        sales_target:
+          type: number
+        revenue_target:
+          type: number
+        commission_target:
+          type: number
+      required: [product_id]
+
+    # Services
+    Service:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [dominio, hospedagem, servidor, api, software]
+        type_label:
+          type: string
+        client_id:
+          type: integer
+          nullable: true
+        client_name:
+          type: string
+        value:
+          type: number
+        billing_cycle:
+          type: string
+          enum: [monthly, annual]
+        due_date:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+      required: [id, name, type, type_label, value, billing_cycle]
+
+    ServicesKpis:
+      type: object
+      properties:
+        expiring_7d:
+          type: integer
+        expiring_30d:
+          type: integer
+        monthly_total:
+          type: number
+        annual_total:
+          type: number
+      required: [expiring_7d, expiring_30d, monthly_total, annual_total]
+
+    ServicesResponse:
+      type: object
+      properties:
+        services:
+          type: array
+          items:
+            $ref: "#/components/schemas/Service"
+        kpis:
+          $ref: "#/components/schemas/ServicesKpis"
+        costs_by_type:
+          type: object
+          additionalProperties:
+            type: number
+        client_options:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+      required: [services, kpis, costs_by_type, client_options]
+
+    CreateServiceBody:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          enum: [dominio, hospedagem, servidor, api, software]
+        client_id:
+          type: integer
+        value:
+          type: number
+          default: 0
+        billing_cycle:
+          type: string
+          enum: [monthly, annual]
+          default: monthly
+        due_date:
+          $ref: "#/components/schemas/ISODate"
+        notes:
+          type: string
+      required: [name, type]
+
+    # Notes
+    Note:
+      type: object
+      properties:
+        id:
+          type: integer
+        content:
+          type: string
+        client_id:
+          type: integer
+          nullable: true
+        client_name:
+          type: string
+          nullable: true
+        created_at:
+          $ref: "#/components/schemas/ISODateTime"
+          nullable: true
+      required: [id, content]
+
+    NotesResponse:
+      type: object
+      properties:
+        notes:
+          type: array
+          items:
+            $ref: "#/components/schemas/Note"
+        client_options:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+      required: [notes, client_options]
+
+    CreateNoteBody:
+      type: object
+      properties:
+        content:
+          type: string
+        client_id:
+          type: integer
+      required: [content]
+
+    # Alerts
+    Alert:
+      type: object
+      properties:
+        id:
+          type: integer
+        client_id:
+          type: integer
+        client_name:
+          type: string
+        rule_id:
+          type: integer
+        message:
+          type: string
+        triggered_at:
+          $ref: "#/components/schemas/ISODateTime"
+          nullable: true
+        resolved:
+          type: boolean
+      required: [id, client_id, client_name, rule_id, message, resolved]
+
+    AlertRule:
+      type: object
+      properties:
+        id:
+          type: integer
+        client_id:
+          type: integer
+        client_name:
+          type: string
+        rule_type:
+          type: string
+          enum: [daily_budget, monthly_budget]
+        threshold:
+          type: number
+        notify_whatsapp:
+          type: boolean
+        active:
+          type: boolean
+      required: [id, client_id, client_name, rule_type, threshold, notify_whatsapp, active]
+
+    CreateAlertRuleBody:
+      type: object
+      properties:
+        client_id:
+          type: integer
+        rule_type:
+          type: string
+          enum: [daily_budget, monthly_budget]
+          default: daily_budget
+        threshold:
+          type: number
+        notify_whatsapp:
+          type: boolean
+          default: false
+        active:
+          type: boolean
+          default: true
+      required: [client_id, threshold]
+
+    # Analytics
+    AnalyticsSite:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        domain:
+          type: string
+        umami_site_id:
+          type: string
+        client_id:
+          type: integer
+          nullable: true
+        client_name:
+          type: string
+      required: [id, name, domain]
+
+    AnalyticsStatsResponse:
+      type: object
+      properties:
+        kpis:
+          type: object
+          properties:
+            pageviews:
+              type: integer
+            visitors:
+              type: integer
+            bounce_rate:
+              type: number
+            avg_time_seconds:
+              type: number
+        pageviews_by_day:
+          type: array
+          items:
+            type: object
+            properties:
+              x:
+                type: string
+              y:
+                type: integer
+        top_pages:
+          type: array
+          items:
+            type: object
+            properties:
+              x:
+                type: string
+              y:
+                type: integer
+
+    CreateSiteBody:
+      type: object
+      properties:
+        name:
+          type: string
+        domain:
+          type: string
+        umami_site_id:
+          type: string
+        client_id:
+          type: integer
+      required: [name, domain]
+
+    # Labels
+    Label:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        color:
+          $ref: "#/components/schemas/HexColor"
+      required: [id, name, color]
+
+    CreateLabelBody:
+      type: object
+      properties:
+        name:
+          type: string
+        color:
+          $ref: "#/components/schemas/HexColor"
+      required: [name]
+
+    # Eduzz
+    EduzzAccount:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+        connected:
+          type: boolean
+        auth_url:
+          type: string
+        created_at:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+      required: [id, name, active, connected, auth_url]
+
+    SyncSalesBody:
+      type: object
+      properties:
+        start_date:
+          $ref: "#/components/schemas/ISODate"
+        end_date:
+          $ref: "#/components/schemas/ISODate"
+
+    # Webhooks
+    WebhookSubscription:
+      type: object
+      properties:
+        id:
+          type: integer
+        account_id:
+          type: integer
+        account_name:
+          type: string
+        eduzz_subscription_id:
+          type: string
+          nullable: true
+        name:
+          type: string
+        url:
+          type: string
+        status:
+          type: string
+          enum: [active, disabled]
+        events:
+          type: array
+          items:
+            type: string
+        created_at:
+          $ref: "#/components/schemas/ISODate"
+          nullable: true
+      required: [id, account_id, account_name, name, url, status, events]
+
+    WebhookEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+        subscription_id:
+          type: integer
+          nullable: true
+        event_type:
+          type: string
+        processed:
+          type: boolean
+        received_at:
+          $ref: "#/components/schemas/ISODateTime"
+          nullable: true
+        payload_preview:
+          type: string
+      required: [id, event_type, processed]
+
+    CreateWebhookBody:
+      type: object
+      properties:
+        account_id:
+          type: integer
+        name:
+          type: string
+        url:
+          type: string
+        events:
+          type: array
+          items:
+            type: string
+      required: [account_id, name, url]
+
+    # Settings
+    WhatsAppSettings:
+      type: object
+      properties:
+        base_url:
+          type: string
+        api_key:
+          type: string
+          description: "Retorna '***' por segurança. Envie o valor real para atualizar."
+        instance_name:
+          type: string
+      required: [base_url, api_key, instance_name]
+
+    UpdateWhatsAppSettingsBody:
+      type: object
+      properties:
+        base_url:
+          type: string
+        instance_name:
+          type: string
+        api_key:
+          type: string
+          description: "Opcional — omita para manter o valor atual"
+      required: [base_url, instance_name]
+
+    # Message Flows
+    MessageFlow:
+      type: object
+      properties:
+        id:
+          type: integer
+        product_id:
+          type: integer
+        product_name:
+          type: string
+        status:
+          type: string
+          enum: [waitingPayment, paid, canceled, recovering, refunded, expired]
+        template:
+          type: string
+        active:
+          type: boolean
+        delay_minutes:
+          type: integer
+      required: [id, product_id, product_name, status, template, active, delay_minutes]
+
+    MessageFlowsResponse:
+      type: object
+      properties:
+        flows:
+          type: array
+          items:
+            $ref: "#/components/schemas/MessageFlow"
+        product_options:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+              eduzz_id:
+                type: string
+                nullable: true
+      required: [flows, product_options]
+
+    CreateMessageFlowBody:
+      type: object
+      properties:
+        product_id:
+          type: integer
+        status:
+          type: string
+          enum: [waitingPayment, paid, canceled, recovering, refunded, expired]
+          default: paid
+        template:
+          type: string
+        active:
+          type: boolean
+          default: true
+        delay_minutes:
+          type: integer
+          default: 0
+      required: [product_id, template]
+
+    # AI
+    AiAction:
+      type: string
+      enum: [create_tasks, generate_message, summarize, extract_data, analyze_campaign]
+
+    AiProcessResult:
+      oneOf:
+        - type: object
+          description: create_tasks
+          properties:
+            tasks:
+              type: array
+              items:
+                type: object
+                properties:
+                  title:
+                    type: string
+                  priority:
+                    type: integer
+                    enum: [1, 2, 3, 4]
+                  due_date:
+                    $ref: "#/components/schemas/ISODate"
+                    nullable: true
+        - type: object
+          description: generate_message
+          properties:
+            message:
+              type: string
+            subject:
+              type: string
+        - type: object
+          description: summarize
+          properties:
+            summary:
+              type: string
+            key_points:
+              type: array
+              items:
+                type: string
+        - type: object
+          description: extract_data
+          properties:
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  value:
+                    type: string
+        - type: object
+          description: analyze_campaign
+          properties:
+            analysis:
+              type: string
+            recommendations:
+              type: array
+              items:
+                type: string
+            metrics:
+              type: object
+              properties:
+                cpa:
+                  type: number
+                ctr:
+                  type: number
+                roas:
+                  type: number
+
+    SaveTasksBody:
+      type: object
+      properties:
+        tasks:
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+              priority:
+                type: integer
+                enum: [1, 2, 3, 4]
+              due_date:
+                $ref: "#/components/schemas/ISODate"
+      required: [tasks]
+
+    SaveTasksResponse:
+      type: object
+      properties:
+        saved_count:
+          type: integer
+        ids:
+          type: array
+          items:
+            type: integer
+      required: [saved_count, ids]
+
+  responses:
+    NotFound:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    BadRequest:
+      description: Dados inválidos
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    InternalError:
+      description: Erro interno
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+paths:
+
+  # Health
+  /api/health:
+    get:
+      tags: [health]
+      summary: Status da API
+      operationId: health
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  # Dashboard
+  /api/dashboard/kpis:
+    get:
+      tags: [dashboard]
+      summary: KPIs do dashboard e gráfico de gastos 7 dias
+      operationId: getDashboardKpis
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardKpis"
+
+  # Clients
+  /api/clients:
+    get:
+      tags: [clients]
+      summary: Listar clientes
+      operationId: listClients
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive]
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Client"
+    post:
+      tags: [clients]
+      summary: Criar cliente
+      operationId: createClient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateClientBody"
+      responses:
+        "201":
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/clients/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [clients]
+      summary: Detalhes do cliente
+      operationId: getClient
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [clients]
+      summary: Atualizar cliente
+      operationId: updateClient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateClientBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Client"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [clients]
+      summary: Excluir cliente
+      operationId: deleteClient
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Tasks
+  /api/tasks:
+    get:
+      tags: [tasks]
+      summary: Listar tarefas
+      operationId: listTasks
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, done]
+        - name: client_id
+          in: query
+          schema:
+            type: integer
+        - name: section
+          in: query
+          schema:
+            type: string
+        - name: priority
+          in: query
+          schema:
+            type: integer
+            enum: [1, 2, 3, 4]
+        - name: due_date
+          in: query
+          schema:
+            $ref: "#/components/schemas/ISODate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      tags: [tasks]
+      summary: Criar tarefa (com parse NLP automático do título)
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskBody"
+      responses:
+        "201":
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/tasks/options:
+    get:
+      tags: [tasks]
+      summary: Opções para formulários de tarefas (clientes, pais, labels)
+      operationId: getTaskOptions
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskOptions"
+
+  /api/tasks/parse:
+    post:
+      tags: [tasks]
+      summary: Parsear texto de tarefa com NLP
+      operationId: parseTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+              required: [text]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NlpParseResult"
+
+  /api/tasks/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      tags: [tasks]
+      summary: Detalhes da tarefa com comentários
+      operationId: getTask
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [tasks]
+      summary: Atualizar tarefa
+      operationId: updateTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [tasks]
+      summary: Excluir tarefa
+      operationId: deleteTask
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tasks/{id}/toggle:
+    post:
+      tags: [tasks]
+      summary: Alternar status da tarefa (pending ↔ done, trata recorrência)
+      operationId: toggleTask
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [pending, done]
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tasks/{id}/comments:
+    post:
+      tags: [tasks]
+      summary: Adicionar comentário
+      operationId: addTaskComment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+              required: [content]
+      responses:
+        "201":
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskComment"
+
+  /api/tasks/comments/{comment_id}:
+    delete:
+      tags: [tasks]
+      summary: Excluir comentário
+      operationId: deleteTaskComment
+      parameters:
+        - name: comment_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  # Labels
+  /api/labels:
+    get:
+      tags: [labels]
+      summary: Listar labels
+      operationId: listLabels
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Label"
+    post:
+      tags: [labels]
+      summary: Criar label
+      operationId: createLabel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLabelBody"
+      responses:
+        "201":
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Label"
+
+  /api/labels/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [labels]
+      summary: Atualizar label
+      operationId: updateLabel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLabelBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Label"
+    delete:
+      tags: [labels]
+      summary: Excluir label
+      operationId: deleteLabel
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  # Campaigns
+  /api/campaigns/snapshots:
+    get:
+      tags: [campaigns]
+      summary: Snapshots de gasto em anúncios
+      operationId: getCampaignSnapshots
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignsResponse"
+
+  # Sales
+  /api/sales:
+    get:
+      tags: [sales]
+      summary: Listar vendas com KPIs
+      operationId: listSales
+      parameters:
+        - name: month
+          in: query
+          description: "Formato YYYY-MM"
+          schema:
+            type: string
+        - name: product_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesResponse"
+    post:
+      tags: [sales]
+      summary: Registrar venda manual
+      operationId: createSale
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSaleBody"
+      responses:
+        "201":
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sale"
+
+  /api/sales/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [sales]
+      summary: Atualizar venda
+      operationId: updateSale
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSaleBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Sale"
+    delete:
+      tags: [sales]
+      summary: Excluir venda
+      operationId: deleteSale
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/sales/sync:
+    post:
+      tags: [sales]
+      summary: Sincronizar vendas da Eduzz API
+      operationId: syncSales
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                days:
+                  type: integer
+                  default: 7
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  synced_count:
+                    type: integer
+
+  # Products
+  /api/products:
+    get:
+      tags: [products]
+      summary: Listar produtos
+      operationId: listProducts
+      parameters:
+        - name: account_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Product"
+                  account_options:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+    post:
+      tags: [products]
+      summary: Criar produto
+      operationId: createProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductBody"
+      responses:
+        "201":
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+
+  /api/products/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [products]
+      summary: Atualizar produto
+      operationId: updateProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+    delete:
+      tags: [products]
+      summary: Excluir produto
+      operationId: deleteProduct
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  # Goals
+  /api/goals:
+    get:
+      tags: [goals]
+      summary: Listar metas com progresso calculado
+      operationId: listGoals
+      parameters:
+        - name: month
+          in: query
+          schema:
+            type: integer
+        - name: year
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Goal"
+    post:
+      tags: [goals]
+      summary: Criar ou atualizar meta (upsert por product_id + month + year)
+      operationId: upsertGoal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertGoalBody"
+      responses:
+        "200":
+          description: OK (upsert)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Goal"
+
+  # Services
+  /api/services:
+    get:
+      tags: [services]
+      summary: Listar serviços com KPIs
+      operationId: listServices
+      parameters:
+        - name: client_id
+          in: query
+          schema:
+            type: integer
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [dominio, hospedagem, servidor, api, software]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServicesResponse"
+    post:
+      tags: [services]
+      summary: Criar serviço
+      operationId: createService
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateServiceBody"
+      responses:
+        "201":
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+
+  /api/services/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [services]
+      summary: Atualizar serviço
+      operationId: updateService
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateServiceBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Service"
+    delete:
+      tags: [services]
+      summary: Excluir serviço
+      operationId: deleteService
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  # Notes
+  /api/notes:
+    get:
+      tags: [notes]
+      summary: Listar notas (use ?wiki=true para notas sem cliente)
+      operationId: listNotes
+      parameters:
+        - name: client_id
+          in: query
+          schema:
+            type: integer
+        - name: wiki
+          in: query
+          description: "Se true, retorna apenas notas de wiki (client_id IS NULL)"
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotesResponse"
+    post:
+      tags: [notes]
+      summary: Criar nota
+      operationId: createNote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNoteBody"
+      responses:
+        "201":
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+
+  /api/notes/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [notes]
+      summary: Atualizar nota
+      operationId: updateNote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNoteBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Note"
+    delete:
+      tags: [notes]
+      summary: Excluir nota
+      operationId: deleteNote
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  # Alerts
+  /api/alerts:
+    get:
+      tags: [alerts]
+      summary: Listar alertas
+      operationId: listAlerts
+      parameters:
+        - name: resolved
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Alert"
+
+  /api/alerts/{id}/resolve:
+    post:
+      tags: [alerts]
+      summary: Marcar alerta como resolvido
+      operationId: resolveAlert
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/alerts/check:
+    post:
+      tags: [alerts]
+      summary: Verificar e disparar novos alertas
+      operationId: checkAlerts
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  triggered_count:
+                    type: integer
+                  alerts:
+                    type: array
+                    items: {}
+
+  /api/alerts/rules:
+    get:
+      tags: [alerts]
+      summary: Listar regras de alertas
+      operationId: listAlertRules
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AlertRule"
+                  client_options:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+    post:
+      tags: [alerts]
+      summary: Criar regra de alerta
+      operationId: createAlertRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAlertRuleBody"
+      responses:
+        "201":
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertRule"
+
+  /api/alerts/rules/{id}:
+    delete:
+      tags: [alerts]
+      summary: Excluir regra de alerta
+      operationId: deleteAlertRule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  # Analytics
+  /api/analytics/sites:
+    get:
+      tags: [analytics]
+      summary: Listar sites monitorados
+      operationId: listSites
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sites:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AnalyticsSite"
+                  client_options:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+    post:
+      tags: [analytics]
+      summary: Cadastrar site
+      operationId: createSite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSiteBody"
+      responses:
+        "201":
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsSite"
+
+  /api/analytics/sites/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [analytics]
+      summary: Atualizar site
+      operationId: updateSite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSiteBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsSite"
+    delete:
+      tags: [analytics]
+      summary: Excluir site
+      operationId: deleteSite
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/analytics/stats:
+    get:
+      tags: [analytics]
+      summary: Estatísticas de um site via Umami API
+      operationId: getAnalyticsStats
+      parameters:
+        - name: site_id
+          in: query
+          required: true
+          schema:
+            type: integer
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: ["7d", "30d", "90d"]
+            default: "7d"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsStatsResponse"
+
+  # Eduzz
+  /api/eduzz/accounts:
+    get:
+      tags: [eduzz]
+      summary: Listar contas Eduzz
+      operationId: listEduzzAccounts
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EduzzAccount"
+    post:
+      tags: [eduzz]
+      summary: Criar conta Eduzz
+      operationId: createEduzzAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              required: [name]
+      responses:
+        "201":
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EduzzAccount"
+
+  /api/eduzz/accounts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [eduzz]
+      summary: Atualizar conta Eduzz
+      operationId: updateEduzzAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                active:
+                  type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EduzzAccount"
+    delete:
+      tags: [eduzz]
+      summary: Excluir conta Eduzz
+      operationId: deleteEduzzAccount
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/eduzz/accounts/{id}/sync:
+    post:
+      tags: [eduzz]
+      summary: Sincronizar vendas de uma conta Eduzz
+      operationId: syncEduzzAccount
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncSalesBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  synced_count:
+                    type: integer
+
+  /api/eduzz/callback:
+    get:
+      tags: [eduzz]
+      summary: Callback OAuth2 da Eduzz
+      operationId: eduzzOAuthCallback
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redireciona após autenticação
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  # Webhooks
+  /api/webhooks/incoming/evolution:
+    post:
+      tags: [webhooks]
+      summary: Receber evento do EvolutionAPI (WhatsApp)
+      operationId: incomingEvolution
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/webhooks/incoming/eduzz:
+    post:
+      tags: [webhooks]
+      summary: Receber evento da Eduzz
+      operationId: incomingEduzz
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/webhooks/subscriptions:
+    get:
+      tags: [webhooks]
+      summary: Listar assinaturas de webhook
+      operationId: listWebhookSubscriptions
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscriptions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/WebhookSubscription"
+                  account_options:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+    post:
+      tags: [webhooks]
+      summary: Criar assinatura de webhook
+      operationId: createWebhookSubscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookBody"
+      responses:
+        "201":
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSubscription"
+
+  /api/webhooks/subscriptions/{id}:
+    delete:
+      tags: [webhooks]
+      summary: Excluir assinatura
+      operationId: deleteWebhookSubscription
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/webhooks/subscriptions/{id}/status:
+    put:
+      tags: [webhooks]
+      summary: Alterar status da assinatura (active/disabled)
+      operationId: setWebhookStatus
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [active, disabled]
+              required: [status]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSubscription"
+
+  /api/webhooks/subscriptions/{id}/test:
+    post:
+      tags: [webhooks]
+      summary: Enviar evento de teste para o webhook
+      operationId: testWebhook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  status_code:
+                    type: integer
+
+  /api/webhooks/events:
+    get:
+      tags: [webhooks]
+      summary: Listar eventos recebidos
+      operationId: listWebhookEvents
+      parameters:
+        - name: subscription_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WebhookEvent"
+
+  # Settings
+  /api/settings/whatsapp:
+    get:
+      tags: [settings]
+      summary: Ler configurações do WhatsApp
+      operationId: getWhatsAppSettings
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppSettings"
+    put:
+      tags: [settings]
+      summary: Salvar configurações do WhatsApp
+      operationId: saveWhatsAppSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWhatsAppSettingsBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/settings/whatsapp/test:
+    post:
+      tags: [settings]
+      summary: Testar conexão com o WhatsApp
+      operationId: testWhatsAppConnection
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                  ok:
+                    type: boolean
+
+  # Message Flows
+  /api/message-flows:
+    get:
+      tags: [message-flows]
+      summary: Listar fluxos de mensagem
+      operationId: listMessageFlows
+      parameters:
+        - name: product_id
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageFlowsResponse"
+    post:
+      tags: [message-flows]
+      summary: Criar fluxo de mensagem
+      operationId: createMessageFlow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMessageFlowBody"
+      responses:
+        "201":
+          description: Criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageFlow"
+
+  /api/message-flows/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    put:
+      tags: [message-flows]
+      summary: Atualizar fluxo de mensagem
+      operationId: updateMessageFlow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMessageFlowBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageFlow"
+    delete:
+      tags: [message-flows]
+      summary: Excluir fluxo de mensagem
+      operationId: deleteMessageFlow
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /api/message-flows/{id}/toggle:
+    post:
+      tags: [message-flows]
+      summary: Ativar/desativar fluxo de mensagem
+      operationId: toggleMessageFlow
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  active:
+                    type: boolean
+
+  # AI Assistant
+  /api/ai/process:
+    post:
+      tags: [ai]
+      summary: Processar texto com IA
+      operationId: aiProcess
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  $ref: "#/components/schemas/AiAction"
+                content:
+                  type: string
+              required: [action, content]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiProcessResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/ai/save-tasks:
+    post:
+      tags: [ai]
+      summary: Salvar tarefas geradas pela IA
+      operationId: aiSaveTasks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveTasksBody"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SaveTasksResponse"
